@@ -116,7 +116,7 @@ pygame.event.set_grab(True)
 
 fpsClock = pygame.time.Clock()
 
-display = pygame.display.set_mode((WIDTH, HEIGHT))
+display = pygame.display.set_mode((WIDTH*2, HEIGHT*2))
 pygame.display.set_caption('Jar')
 
 shouldExit = False
@@ -177,7 +177,18 @@ while not shouldExit:
             # personVel -= gravity*dt
             if result.y:
                 personVel.x *= 1-friction
-                personAcc -= gravity
+
+                if result.y < 0:
+                    # personAcc -= gravity
+                    pass
+
+                if result.y < 0 and personVel.y < 0 or \
+                   result.y > 0 and personVel.y > 0:
+                    personVel.y = 0
+
+            if result.x < 0 and personVel.x < 0 or \
+               result.x > 0 and personVel.y > 0:
+                personVel.x = 0
     
         c = False
         t = V2(0, 0)
