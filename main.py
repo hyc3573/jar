@@ -2,8 +2,13 @@ import pygame
 from pygame.locals import *
 import time
 from math import *
-import numpy as np
 import pygame.math
+
+flt_min = 0.0000001
+
+drawLine = False
+lineFrom = pygame.Vector2(0, 0)
+lineTo = pygame.Vector2(0, 0)
 
 def AABBvsAABB(rect1: pygame.Rect, rect2: pygame.Rect):
     return (rect1.x < rect2.x + rect2.width and
@@ -38,6 +43,35 @@ def PenetrationVector(minDiff: pygame.Rect):
 
     return result
 
+def AABBvsRay(rect: pygame.Rect, orig: pygame.Vector2, rdir: pygame.Vector2):
+    dirfrac = pygame.Vector2(1/(rdir.x+flt_min), 1/(rdir.y+flt_min))
+
+    t1 = (rect.left - orig.x)*dirfrac.x
+    t2 = (rect.right - orig.x)*dirfrac.x
+    t3 = (rect.top - orig.y)*dirfrac.y
+    t4 = (rect.bottom - orig.y)*dirfrac.y
+
+    tmin = max(min(t1, t2), min(t3, t4))
+    tmax = min(max(t1, t2), max(t3, t4))
+
+    if tmax < 0:
+        return (False, tmax)
+    elif tmin > tmax:
+        return (False, tmax)
+    else:
+        return (True, tmin)
+
+def AABBvsSegment(rect: pygame.Rect, vfrom: pygame.Vector2, vto: pygame.Vector2):
+    c, t = AABBvsRay(rect, vfrom, (vto - vfrom).normalize())
+
+    if not c:
+        return (False, V2(0, 0))
+    
+    if t**2 < (vto-vfrom).length_squared():
+        return (True, (vto-vfrom).normalize()*t)
+    else:
+        return (False, V2(0, 0))
+
 # Constants
 FPS = 120
 dt = 1/FPS
@@ -50,7 +84,7 @@ V2 = pygame.Vector2
 hammerPos = V2(0, 0)
 hammerVel = V2(0, 0)
 hammerAcc = V2(0, 0)
-hammerLength = WIDTH/7
+hammerLength = WIDTH/5
 hammerRad = 5
 
 personWidth = WIDTH/15
@@ -92,6 +126,9 @@ while not shouldExit:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             shouldExit = True;
+        elif event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
+                shouldExit = True
 
     hammerPosPrev = hammerPos
 
@@ -103,9 +140,11 @@ while not shouldExit:
 
     pygame.mouse.set_pos(V2(WIDTH/2, HEIGHT/2))
 
+    hammerPosPrev = hammerPos*1
     hammerPos += hammerVel*dt
     if (hammerPos - personPos).length_squared() > hammerLength**2:
         hammerPos = (hammerPos - personPos).normalize()*hammerLength + personPos
+    hammerVel = (hammerPos - hammerPosPrev)*FPS
 
     personAcc += gravity
     personVel += personAcc*dt
@@ -140,13 +179,20 @@ while not shouldExit:
                 personVel.x *= 1-friction
                 personAcc -= gravity
     
-        if AABBvsPoint(rects[i], hammerPos):
-            minDiff = pygame.Rect(rects[i].left-hammerPos.x, rects[i].top-hammerPos.y,
-                                  rects[i].width, rects[i].height)
-            result = PenetrationVector(minDiff)
+        c = False
+        t = V2(0, 0)
+        if hammerVel.length_squared() != 0:
+            c, t = AABBvsSegment(rects[i], hammerPos - hammerVel*dt, hammerPos)
+
+        if c:
+            result = t
             
-            hammerPos += result
-            hammerPos.x -= hammerVel.x*dt
+            hammerPos = hammerPosPrev + result
+
+            if result.y:
+                hammerPos.x -= hammerVel.x*dt
+            elif result.x:
+                hammerPos.y -= hammerVel.y*dt
 
             F = ((hammerPos - hammerPosPrev)*FPS - hammerVel)*FPS
             personAcc += F/50
@@ -160,6 +206,11 @@ while not shouldExit:
         
     pygame.draw.rect(display, (255, 0, 0), personRect(personPos))
     pygame.draw.circle(display, (0, 255, 0), tuple(hammerPos), hammerRad)
+
+    if drawLine:
+        pygame.draw.line(display, (255, 255, 0), lineFrom, lineTo)
+        pygame.draw.circle(display, (255, 55, 0), lineTo, 10)
+        # drawLine = False
 
     pygame.display.flip()
     fpsClock.tick(FPS);
